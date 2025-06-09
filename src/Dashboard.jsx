@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { setDoc, updateDoc, getFirestore, collection, getDocs, getDoc, addDoc, deleteDoc, doc } from "firebase/firestore";
+import React, { useState, useEffect, useMemo } from "react";
+import { firebaseApp, auth, db } from "./firebase";
+import { signOut } from "firebase/auth";
 
-export default function CourseManager() {
+
+export default function CourseManager({ onLogout }) {
   const [step, setStep] = useState(1);
 
   // Data structure:
@@ -16,9 +20,65 @@ export default function CourseManager() {
   const [folderTitle, setFolderTitle] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const selectedCourseObj = courses.find(c => c.id === selectedCourse);
+
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [askToContinue, setAskToContinue] = useState(false);
+  
+  const confirmDeleteCourse = (course) => {
+  setShowConfirm(true);
+  setConfirmType("course");
+  setConfirmTarget(course); // pass full course object
+};
+
+const confirmDeleteFolder = (course, folder) => {
+  setShowConfirm(true);
+  setConfirmType("folder");
+  setConfirmTarget({ course, folder }); // course is full object
+};
+
+const confirmDeleteLink = (course, folder, index) => {
+  setShowConfirm(true);
+  setConfirmType("link");
+  setConfirmTarget({ course, folder, index }); // course is full object
+};
+
+
+
+const handleNewLinkFromOverview = (course, folder) => {
+  setSelectedCourse(course.id);
+  setSelectedFolder(folder);
+  setStep(3); // Go to Add Link step
+  setAskToContinue(false);
+};
+
+
+  useEffect(() => {
+  const fetchUserCourses = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const coursesRef = collection(db, "users", user.uid, "courses");
+    const snapshot = await getDocs(coursesRef);
+    const coursesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setCourses(coursesData);
+
+    // Initialize folders and links from coursesData if you want
+    const foldersData = {};
+    const linksData = {};
+    coursesData.forEach(course => {
+      foldersData[course.id] = course.folders || [];
+      linksData[course.id] = course.links || {};
+    });
+    setFolders(foldersData);
+    setLinks(linksData);
+  };
+
+  fetchUserCourses();
+}, []);
+
 
   // Confirmation popup state
   const [showConfirm, setShowConfirm] = useState(false);
@@ -37,215 +97,559 @@ export default function CourseManager() {
     }
   };
 
-  // Add course
-  const handleAddCourse = () => {
-    const trimmed = newCourse.trim();
-    if (!trimmed) return alert("Course name cannot be empty");
-    if (courses.some(c => c.toLowerCase() === trimmed.toLowerCase())) 
-      return alert("Course already exists");
-    setCourses((prev) => [...prev, trimmed]);
-    setFolders((prev) => ({ ...prev, [trimmed]: [] }));
-    setLinks((prev) => ({ ...prev, [trimmed]: {} }));
-    setNewCourse("");
-    setStep(2);
-    setSelectedCourse(trimmed);
+
+
+  // ADD COURSE
+ const handleAddCourse = async () => {
+  const trimmed = newCourse.trim();
+  if (!trimmed) return alert("Course name cannot be empty");
+
+  const tempId = `temp-${Date.now()}`;
+
+  // ✅ Check in local state
+  if (courses.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+    return alert("Course already exists locally. Try a different name or wait.");
+  }
+
+  // Optimistically update UI
+  const newCourseObj = {
+    id: tempId,
+    name: trimmed,
+    folders: [],
+    links: {},
   };
+  setCourses(prev => [...prev, newCourseObj]);
+  setFolders(prev => ({ ...prev, [tempId]: [] }));
+  setLinks(prev => ({ ...prev, [tempId]: {} }));
+  setNewCourse("");
+  setSelectedCourse(tempId);
+  setStep(2);
 
-  // Add folder
-  const handleAddFolder = () => {
-    const trimmed = folderTitle.trim();
-    if (!trimmed) return alert("Folder name cannot be empty");
-    if (!selectedCourse) return alert("No course selected");
-    if (folders[selectedCourse].some(f => f.toLowerCase() === trimmed.toLowerCase()))
-      return alert("Folder already exists in this course");
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not logged in");
 
-    setFolders((prev) => ({
-      ...prev,
-      [selectedCourse]: [...prev[selectedCourse], trimmed],
-    }));
-    setLinks((prev) => ({
-      ...prev,
-      [selectedCourse]: { ...prev[selectedCourse], [trimmed]: [] },
-    }));
-    setFolderTitle("");
-    setAskToContinue(true);
-  };
+    const coursesRef = collection(db, "users", user.uid, "courses");
 
-  // Add link
-  const handleAddLink = () => {
-    const titleTrimmed = linkTitle.trim();
-    const urlTrimmed = linkUrl.trim();
-    if (!titleTrimmed || !urlTrimmed) return alert("Title and URL are required");
-    if (!selectedCourse || !selectedFolder)
-      return alert("Course and folder must be selected");
+    // 🔍 Check Firestore for duplicate
+    const snapshot = await getDocs(coursesRef);
+    const exists = snapshot.docs.find(
+      (doc) => doc.data().name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (exists) {
+      alert("Course already exists in the database.");
 
-    const existingLinks = links[selectedCourse][selectedFolder] || [];
-    // Check for duplicate link title or url in the folder
-    if (
-      existingLinks.some(
-        (l) => l.title === titleTrimmed || l.url === urlTrimmed
-      )
-    ) {
-      return alert("Link with same title or URL already exists in this folder");
+      // 🔁 Rollback UI
+      setCourses(prev => prev.filter(c => c.id !== tempId));
+      setFolders(prev => {
+        const updated = { ...prev };
+        delete updated[tempId];
+        return updated;
+      });
+      setLinks(prev => {
+        const updated = { ...prev };
+        delete updated[tempId];
+        return updated;
+      });
+      return;
     }
 
-    const updatedLinks = {
-      ...links,
-      [selectedCourse]: {
-        ...links[selectedCourse],
-        [selectedFolder]: [...existingLinks, { title: titleTrimmed, url: urlTrimmed }],
-      },
-    };
-    setLinks(updatedLinks);
-    setLinkTitle("");
-    setLinkUrl("");
-    setAskToContinue(true);
+    // ✅ Add to Firestore
+    const docRef = await addDoc(coursesRef, {
+      name: trimmed,
+      folders: [],
+      links: {},
+    });
+
+    // 🔁 Replace temp ID with real ID in all places
+    setCourses(prev => prev.map(c =>
+      c.id === tempId ? { ...c, id: docRef.id } : c
+    ));
+    setFolders(prev => {
+      const updated = { ...prev };
+      updated[docRef.id] = updated[tempId];
+      delete updated[tempId];
+      return updated;
+    });
+    setLinks(prev => {
+      const updated = { ...prev };
+      updated[docRef.id] = updated[tempId];
+      delete updated[tempId];
+      return updated;
+    });
+
+    setSelectedCourse(docRef.id);
+  } catch (error) {
+    alert("Failed to add course: " + error.message);
+
+    // ❌ Rollback UI if Firestore fails
+    setCourses(prev => prev.filter(c => c.id !== tempId));
+    setFolders(prev => {
+      const updated = { ...prev };
+      delete updated[tempId];
+      return updated;
+    });
+    setLinks(prev => {
+      const updated = { ...prev };
+      delete updated[tempId];
+      return updated;
+    });
+  }
+};
+
+
+
+
+
+  // ADD FOLDER
+  const handleAddFolder = async () => {
+  const trimmed = folderTitle.trim();
+  if (!trimmed) return alert("Folder name cannot be empty");
+  if (!selectedCourse) return alert("No course selected");
+
+  const currentFolders = folders[selectedCourse] || [];
+  if (currentFolders.some(f => f.toLowerCase() === trimmed.toLowerCase()))
+    return alert("Folder already exists in this course");
+
+  const user = auth.currentUser;
+  if (!user) return alert("Not logged in");
+
+  // Optimistically update local state first
+  const updatedFolders = [...currentFolders, trimmed];
+  const updatedLinks = {
+    ...(links[selectedCourse] || {}),
+    [trimmed]: [],
   };
+
+  setFolders(prev => ({
+    ...prev,
+    [selectedCourse]: updatedFolders,
+  }));
+
+  setLinks(prev => ({
+    ...prev,
+    [selectedCourse]: updatedLinks,
+  }));
+
+  setFolderTitle(""); // Clear input
+  setAskToContinue(true);
+
+  try {
+    const docRef = doc(db, "users", user.uid, "courses", selectedCourse);
+    await updateDoc(docRef, {
+      folders: updatedFolders,
+      links: updatedLinks,
+    });
+  } catch (error) {
+    console.error("Failed to sync folder with Firestore:", error);
+    alert("Failed to save folder to Firestore. Refresh or try again.");
+    // Revert UI state on failure (optional)
+  }
+};
+
+
+
+  // Add link
+  const handleAddLink = async () => {
+  const titleTrimmed = linkTitle.trim();
+  const urlTrimmed = linkUrl.trim();
+  if (!titleTrimmed || !urlTrimmed) return alert("Title and URL are required");
+  if (!selectedCourse || !selectedFolder)
+    return alert("Course and folder must be selected");
+
+  const currentLinks = links[selectedCourse]?.[selectedFolder] || [];
+
+  // Check for duplicates
+  if (
+    currentLinks.some(
+      (l) =>
+        l.title.toLowerCase() === titleTrimmed.toLowerCase() ||
+        l.url === urlTrimmed
+    )
+  ) {
+    return alert("Link with the same title or URL already exists in this folder");
+  }
+
+  const newLink = { title: titleTrimmed, url: urlTrimmed };
+  const updatedFolderLinks = [...currentLinks, newLink];
+
+  // Optimistic UI update
+  setLinks((prev) => ({
+    ...prev,
+    [selectedCourse]: {
+      ...(prev[selectedCourse] || {}),
+      [selectedFolder]: updatedFolderLinks,
+    },
+  }));
+
+  setLinkTitle("");
+  setLinkUrl("");
+  setAskToContinue(true);
+
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not logged in");
+
+    const docRef = doc(db, "users", user.uid, "courses", selectedCourse);
+    await updateDoc(docRef, {
+      [`links.${selectedFolder}`]: updatedFolderLinks,
+    });
+  } catch (error) {
+    console.error("Failed to sync link to Firestore:", error);
+    alert("Failed to save link to Firestore.");
+    // (Optional) Roll back optimistic UI update here if needed
+  }
+};
+
+
+
 
   // Confirm delete handlers
-  const confirmDeleteCourse = (course) => {
-    setConfirmType("course");
-    setConfirmTarget({ course });
-    setShowConfirm(true);
-  };
-  const confirmDeleteFolder = (course, folder) => {
-    setConfirmType("folder");
-    setConfirmTarget({ course, folder });
-    setShowConfirm(true);
-  };
-  const confirmDeleteLink = (course, folder, linkIndex) => {
-    setConfirmType("link");
-    setConfirmTarget({ course, folder, linkIndex });
-    setShowConfirm(true);
-  };
+  const handleDeleteConfirmed = async () => {
+  const user = auth.currentUser;
+  if (!user || !confirmType || !confirmTarget) return;
 
-  // Actual delete logic when confirmed
-  const handleDeleteConfirmed = () => {
-    if (!confirmType || !confirmTarget) return;
+  // Immediately close the confirmation modal for responsiveness
+  setShowConfirm(false);
+  setConfirmType(null);
+  setConfirmTarget(null);
 
+  try {
+    // CASE: DELETE COURSE
     if (confirmType === "course") {
-      const course = confirmTarget.course;
+      const course = confirmTarget;
+
       // Save undo data
       setUndoData({
         type: "course",
         data: {
           course,
-          folders: folders[course],
-          links: links[course],
+          folders: folders[course.id] || [],
+          links: links[course.id] || {},
         },
       });
-      // Remove course and associated folders/links
-      setCourses((prev) => prev.filter((c) => c !== course));
+      clearUndoTimer(); // clear previous timer if any
+undoTimeoutRef.current = setTimeout(() => {
+  setUndoData(null);
+}, 10000); // 10 seconds
+
+
+      // ✅ Immediately update UI
+      setCourses((prev) => prev.filter((c) => c.id !== course.id));
       setFolders((prev) => {
         const copy = { ...prev };
-        delete copy[course];
+        delete copy[course.id];
         return copy;
       });
       setLinks((prev) => {
         const copy = { ...prev };
-        delete copy[course];
+        delete copy[course.id];
         return copy;
       });
-    } else if (confirmType === "folder") {
+
+      // 🔧 Firestore delete in background
+      deleteDoc(doc(db, "users", user.uid, "courses", course.id))
+        .catch((err) => {
+          console.error("Failed to delete course in Firestore:", err);
+          alert("Failed to sync course deletion with Firestore.");
+        });
+    }
+
+    // CASE: DELETE FOLDER
+    else if (confirmType === "folder") {
       const { course, folder } = confirmTarget;
+      const docRef = doc(db, "users", user.uid, "courses", course.id);
+
+      const folderLinks = links[course.id]?.[folder] || [];
+
       setUndoData({
         type: "folder",
         data: {
           course,
           folder,
-          links: links[course][folder],
+          links: folderLinks,
         },
       });
-      // Remove folder
+      clearUndoTimer(); // clear previous timer if any
+undoTimeoutRef.current = setTimeout(() => {
+  setUndoData(null);
+}, 10000); // 10 seconds
+
+
+      const updatedFolders = (folders[course.id] || []).filter((f) => f !== folder);
+      const updatedLinks = { ...(links[course.id] || {}) };
+      delete updatedLinks[folder];
+
+      // ✅ Immediately update UI
       setFolders((prev) => ({
         ...prev,
-        [course]: prev[course].filter((f) => f !== folder),
-      }));
-      setLinks((prev) => {
-        const courseLinks = { ...prev[course] };
-        delete courseLinks[folder];
-        return { ...prev, [course]: courseLinks };
-      });
-    } else if (confirmType === "link") {
-      const { course, folder, linkIndex } = confirmTarget;
-      const linkToRemove = links[course][folder][linkIndex];
-      setUndoData({
-        type: "link",
-        data: { course, folder, link: linkToRemove, linkIndex },
-      });
-      setLinks((prev) => {
-        const newFolderLinks = [...prev[course][folder]];
-        newFolderLinks.splice(linkIndex, 1);
-        return {
-          ...prev,
-          [course]: {
-            ...prev[course],
-            [folder]: newFolderLinks,
-          },
-        };
-      });
-    }
-
-    setShowConfirm(false);
-    setConfirmType(null);
-    setConfirmTarget(null);
-
-    clearUndoTimer();
-    undoTimeoutRef.current = setTimeout(() => {
-      setUndoData(null);
-    }, 10000);
-  };
-
-  // Undo handler
-  const handleUndo = () => {
-    if (!undoData) return;
-
-    if (undoData.type === "course") {
-      const { course, folders: courseFolders, links: courseLinks } = undoData.data;
-      setCourses((prev) => [...prev, course]);
-      setFolders((prev) => ({ ...prev, [course]: courseFolders }));
-      setLinks((prev) => ({ ...prev, [course]: courseLinks }));
-    } else if (undoData.type === "folder") {
-      const { course, folder, links: folderLinks } = undoData.data;
-      setFolders((prev) => ({
-        ...prev,
-        [course]: [...prev[course], folder],
+        [course.id]: updatedFolders,
       }));
       setLinks((prev) => ({
         ...prev,
-        [course]: { ...prev[course], [folder]: folderLinks },
+        [course.id]: updatedLinks,
       }));
+
+      // 🔧 Firestore update in background
+      updateDoc(docRef, {
+        folders: updatedFolders,
+        links: updatedLinks,
+      }).catch((err) => {
+        console.error("Failed to delete folder in Firestore:", err);
+        alert("Failed to sync folder deletion with Firestore.");
+      });
+    }
+
+    // CASE: DELETE LINK
+    else if (confirmType === "link") {
+      const { course, folder, index } = confirmTarget;
+      const currentLinks = links[course.id]?.[folder] || [];
+      const deletedLink = currentLinks[index];
+      if (!deletedLink) throw new Error("Link not found");
+
+      const updatedFolderLinks = [...currentLinks];
+      updatedFolderLinks.splice(index, 1);
+
+      setUndoData({
+        type: "link",
+        data: {
+          course,
+          folder,
+          link: deletedLink,
+        },
+      });
+      clearUndoTimer(); // clear previous timer if any
+undoTimeoutRef.current = setTimeout(() => {
+  setUndoData(null);
+}, 10000); // 10 seconds
+
+
+      // ✅ Immediately update UI
+      setLinks((prev) => ({
+        ...prev,
+        [course.id]: {
+          ...(prev[course.id] || {}),
+          [folder]: updatedFolderLinks,
+        },
+      }));
+
+      const docRef = doc(db, "users", user.uid, "courses", course.id);
+
+      // 🔧 Firestore update in background
+      updateDoc(docRef, {
+        [`links.${folder}`]: updatedFolderLinks,
+      }).catch((err) => {
+        console.error("Failed to delete link in Firestore:", err);
+        alert("Failed to sync link deletion with Firestore.");
+      });
+    }
+  } catch (err) {
+    console.error("Deletion failed:", err);
+    alert("Something went wrong during deletion.");
+  }
+};
+
+
+
+
+
+  // Undo handler
+  const handleUndo = async () => {
+  if (!undoData) return;
+
+  try {
+    const user = auth.currentUser;
+    if (!user) return alert("Not logged in");
+
+    if (undoData.type === "course") {
+      const { course, folders: courseFolders, links: courseLinks } = undoData.data;
+      const docRef = doc(db, "users", user.uid, "courses", course.id);
+
+      setDoc(docRef, {
+        name: course.name,
+        folders: courseFolders || [],
+        links: courseLinks || {},
+      });
+
+      // Update local state
+      setCourses((prev) => [...prev, course]);
+      setFolders((prev) => ({ ...prev, [course.id]: courseFolders || [] }));
+      setLinks((prev) => ({ ...prev, [course.id]: courseLinks || {} }));
+
+    } else if (undoData.type === "folder") {
+      const { course, folder, links: folderLinks } = undoData.data;
+      const docRef = doc(db, "users", user.uid, "courses", course.id);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) throw new Error("Course not found");
+
+      const courseData = docSnap.data();
+      const updatedFolders = [...(courseData.folders || []), folder];
+      const updatedLinks = { ...(courseData.links || {}) };
+      updatedLinks[folder] = folderLinks || [];
+
+      updateDoc(docRef, {
+        folders: updatedFolders,
+        links: updatedLinks,
+      });
+
+      setFolders((prev) => ({
+        ...prev,
+        [course.id]: [...(prev[course.id] || []), folder],
+      }));
+      setLinks((prev) => ({
+        ...prev,
+        [course.id]: { ...(prev[course.id] || {}), [folder]: folderLinks || [] },
+      }));
+
     } else if (undoData.type === "link") {
-      const { course, folder, link, linkIndex } = undoData.data;
+      const { course, folder, link } = undoData.data;
+      const docRef = doc(db, "users", user.uid, "courses", course.id);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) throw new Error("Course not found");
+
+      const courseData = docSnap.data();
+      const folderLinks = [...((courseData.links && courseData.links[folder]) || [])];
+
+      folderLinks.push(link);
+
+      const updatedLinks = {
+        ...courseData.links,
+        [folder]: folderLinks,
+      };
+
+      updateDoc(docRef, { links: updatedLinks });
+
       setLinks((prev) => {
-        const newFolderLinks = [...(prev[course][folder] || [])];
-        newFolderLinks.splice(linkIndex, 0, link);
+        const courseLinks = prev[course.id] || {};
+        const updatedFolderLinks = [...(courseLinks[folder] || []), link];
         return {
           ...prev,
-          [course]: {
-            ...prev[course],
-            [folder]: newFolderLinks,
+          [course.id]: {
+            ...courseLinks,
+            [folder]: updatedFolderLinks,
           },
         };
       });
     }
-    clearUndoTimer();
+
     setUndoData(null);
+  } catch (error) {
+    console.error("Undo failed:", error);
+    alert("Something went wrong while restoring data.");
+  }
+};
+
+
+
+
+//Logout
+
+const handleLogout = async () => {
+    try {
+      await signOut(auth);  // Log out from Firebase
+      if (onLogout) onLogout();  // Update app state (e.g., set isLoggedIn false)
+    } catch (error) {
+      alert("Logout failed: " + error.message);
+    }
   };
 
-  // Add link from overview shortcut
-  const handleNewLinkFromOverview = (course, folder) => {
-    setSelectedCourse(course);
-    setSelectedFolder(folder);
-    setStep(3);
-    setAskToContinue(false);
-    setLinkTitle("");
-    setLinkUrl("");
-  };
+
+
+const overviewContent = useMemo(() => {
+  return (courses || []).filter(course => !!course.id && !!course.name)
+    .map((course) => (
+
+    <div key={course.id} className="mb-6 border border-gray-700 rounded p-4 bg-gray-800">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-2xl font-semibold">{course.name.toUpperCase()}</h3>
+        <button
+          title="Remove Course"
+          onClick={() => confirmDeleteCourse(course)}
+          className="text-red-600 font-bold text-xl hover:text-red-800"
+        >
+          &times;
+        </button>
+      </div>
+
+      {(folders[course.id] || []).length === 0 && (
+        <p className="ml-4 italic">No folders added.</p>
+      )}
+
+      {(folders?.[course.id] || []).map((folder) => (
+        <div key={folder} className="ml-6 mb-4 border border-gray-600 rounded p-3 bg-gray-700">
+          <div className="flex justify-between items-center mb-2">
+            <h4 className="font-semibold">{folder}</h4>
+            <button
+              title="Remove Folder"
+              onClick={() => confirmDeleteFolder(course, folder)}
+              className="text-red-600 font-bold text-lg hover:text-red-800"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="ml-4">
+            {(links[course.id]?.[folder] || []).length === 0 && (
+              <p className="italic text-sm">No links added.</p>
+            )}
+
+            {(links?.[course.id]?.[folder] || []).map((link, idx) => (
+              <div key={idx} className="flex justify-between items-center mb-1">
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-400"
+                >
+                  {link.title}
+                </a>
+                <button
+                  title="Remove Link"
+                  onClick={() => confirmDeleteLink(course, folder, idx)}
+                  className="text-red-600 font-bold hover:text-red-800"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+
+            <button
+              onClick={() => handleNewLinkFromOverview(course, folder)}
+              className="text-green-500 underline hover:text-green-700 text-sm mt-2"
+            >
+              + Add Link
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  ));
+}, [courses, folders, links]);
+
+
 
   return (
     <>
-      <div className="min-h-screen bg-gray-800 flex items-center justify-center p-6">
+      {/* Container with relative positioning to anchor the Logout button */}
+    <div className="min-h-screen bg-gray-800 flex items-center justify-center p-6 relative">
+      {/* Logout button for Step 1 */}
+      {step === 1 && (
+        <button
+          onClick={handleLogout}
+          className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Logout
+        </button>
+      )}
+
+      {/* Logout button for Step 4 (Overview) */}
+      {step === 4 && (
+        <button
+          onClick={handleLogout}
+          className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Logout
+        </button>
+      )}
         <div className="max-w-4xl w-full bg-gray-900 rounded-lg p-8 text-white shadow-lg">
           {/* Step 1: Add Course */}
 {step === 1 && (
@@ -258,6 +662,8 @@ export default function CourseManager() {
       placeholder="Enter course name"
       className="w-full px-4 py-2 rounded mb-4 text-black"
     />
+
+    
     <button
       onClick={handleAddCourse}
       className="bg-green-600 px-6 py-2 rounded hover:bg-green-700"
@@ -265,21 +671,33 @@ export default function CourseManager() {
       Add Course
     </button>
 
+  
+
+      <button
+  onClick={() => setStep(4)}
+  className="mt-4 bg-gray-500 px-6 py-2 rounded hover:bg-gray-400"
+>
+  Go to Overview
+</button>
+
+    
+
+
     {/* Show added courses */}
     {courses.length > 0 && (
       <div className="mt-6 text-left">
         <h2 className="text-2xl font-semibold mb-3">Your Courses:</h2>
         <ul>
           {courses.map((course) => (
-            <li key={course}>
+            <li key={course.id}>
               <button
                 className="text-blue-400 underline hover:text-blue-600 mb-2"
                 onClick={() => {
-                  setSelectedCourse(course);
+                  setSelectedCourse(course.id);
                   setStep(2);
                 }}
               >
-                {course.toUpperCase()}
+                {course.name.toUpperCase()}
               </button>
             </li>
           ))}
@@ -293,7 +711,7 @@ export default function CourseManager() {
 {step === 2 && (
   <div className="max-w-md mx-auto text-center">
     <h2 className="text-3xl font-semibold mb-4">
-      Add Folder to: <span className="underline">{selectedCourse}</span>
+      Add Folder to: <span className="underline">{selectedCourseObj?.name}</span>
     </h2>
     <input
       type="text"
@@ -302,20 +720,35 @@ export default function CourseManager() {
       placeholder="Add New Folder Name"
       className="w-full px-4 py-2 border rounded mb-4 text-black"
     />
-    {/* Remove this single Add Folder button here */}
-    {/* <button
-      onClick={handleAddFolder}
-      className="bg-green-600 px-6 py-2 rounded hover:bg-green-700"
-    >
-      Add Folder
-    </button> */}
+
+    {(folders[selectedCourse] || []).length > 0 && (
+  <div className="mt-6 text-left">
+    <h3 className="text-xl font-semibold mb-3">Your Folders:</h3>
+    <ul>
+      {folders[selectedCourse]?.map((folder) => (
+        <li key={folder}>
+          <button
+            className="text-blue-400 underline hover:text-blue-600 mb-2"
+            onClick={() => {
+              setSelectedFolder(folder);
+              setStep(3);
+              setAskToContinue(false);
+            }}
+          >
+            {folder}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
 
     {/* Show existing folders */}
-    {(folders[selectedCourse] || []).length > 0 && (
+    {(folders[selectedCourseObj?.name] || []).length > 0 && (
       <div className="mt-6 text-left">
         <h3 className="text-xl font-semibold mb-3">Existing Folders:</h3>
         <ul>
-          {folders[selectedCourse].map((folder) => (
+          {folders[selectedCourse]?.map((folder) => (
             <li key={folder}>
               <button
                 className="text-blue-400 underline hover:text-blue-600 mb-2"
@@ -364,9 +797,9 @@ export default function CourseManager() {
 {step === 3 && (
   <div className="max-w-md mx-auto text-center">
     <h2 className="text-3xl font-semibold mb-4">
-      Add Link to Folder:{" "}
+      Add Link to Folder:{selectedCourseObj?.name}
       <span className="underline">
-        {selectedCourse} / {selectedFolder || "Select folder"}
+        {selectedCourseObj?.name} / {selectedFolder || "Select folder"}
       </span>
     </h2>
 
@@ -380,7 +813,7 @@ export default function CourseManager() {
         <option value="" disabled>
           Folder Not Selected, Select One
         </option>
-        {(folders[selectedCourse] || []).map((f) => (
+        {folders[selectedCourse]?.map((f) => (
           <option key={f} value={f}>
             {f}
           </option>
@@ -440,93 +873,22 @@ export default function CourseManager() {
 
           {/* Step 4: Overview */}
           {step === 4 && (
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">Overview</h2>
-              {courses.length === 0 && <p>No courses added yet.</p>}
+  <div className="max-w-4xl mx-auto">
+    <h2 className="text-3xl font-bold mb-6">Overview</h2>
 
-              {courses.map((course) => (
-                <div
-                  key={course}
-                  className="mb-6 border border-gray-700 rounded p-4 bg-gray-800"
-                >
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-2xl font-semibold">{course.toUpperCase()}</h3>
-                    <button
-                      title="Remove Course"
-                      onClick={() => confirmDeleteCourse(course)}
-                      className="text-red-600 font-bold text-xl hover:text-red-800"
-                    >
-                      &times;
-                    </button>
-                  </div>
+    {courses.length === 0 && <p>No courses added yet.</p>}
 
-                  {(folders[course] || []).length === 0 && (
-                    <p className="ml-4 italic">No folders added.</p>
-                  )}
+    {overviewContent}
 
-                  {(folders[course] || []).map((folder) => (
-                    <div
-                      key={folder}
-                      className="ml-6 mb-4 border border-gray-600 rounded p-3 bg-gray-700"
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold">{folder}</h4>
-                        <button
-                          title="Remove Folder"
-                          onClick={() => confirmDeleteFolder(course, folder)}
-                          className="text-red-600 font-bold text-lg hover:text-red-800"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                      <div className="ml-4">
-                        {(links[course]?.[folder] || []).length === 0 && (
-                          <p className="italic text-sm">No links added.</p>
-                        )}
+    <button
+      onClick={() => setStep(1)}
+      className="w-full bg-gray-900 hover:bg-gray-700 rounded py-3 text-2xl font-bold mt-6"
+    >
+      Add Course/Folder
+    </button>
+  </div>
+)}
 
-                        {(links[course]?.[folder] || []).map((link, idx) => (
-                          <div
-                            key={idx}
-                            className="flex justify-between items-center mb-1"
-                          >
-                            <a
-                              href={link.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="underline text-blue-400"
-                            >
-                              {link.title}
-                            </a>
-                            <button
-                              title="Remove Link"
-                              onClick={() => confirmDeleteLink(course, folder, idx)}
-                              className="text-red-600 font-bold hover:text-red-800"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                        ))}
-
-                        <button
-                          onClick={() => handleNewLinkFromOverview(course, folder)}
-                          className="text-green-500 underline hover:text-green-700 text-sm mt-2"
-                        >
-                          + Add Link
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              <button
-                onClick={() => setStep(1)}
-                className="w-full bg-gray-900 hover:bg-gray-700 rounded py-3 text-2xl font-bold"
-              >
-                Add Course/Folder
-              </button>
-            </div>
-          )}
 
           {/* Confirmation popup */}
           {showConfirm && (
@@ -573,6 +935,8 @@ export default function CourseManager() {
               </div>
             </div>
           )}
+      
+  
 
           {/* Undo notification */}
           {undoData && (

@@ -1,21 +1,28 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "./firebase"; // adjust path if needed
 
-export default function Login({ onLogin }) {
+export default function Signup({ onSignup }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match!");
+      return;
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      if (onLogin) onLogin(); // optional: for app-wide login state
+      await createUserWithEmailAndPassword(auth, email, password);
+      if (onSignup) onSignup(); // optional: update app-level auth state
       navigate("/dashboard");
     } catch (error) {
-      alert("Login failed: " + error.message);
+      alert("Signup failed: " + error.message);
     }
   };
 
@@ -27,7 +34,7 @@ export default function Login({ onLogin }) {
 
       <div className="bg-green-300 bg-opacity-90 p-8 rounded-lg shadow-lg max-w-md w-full">
         <h2 className="text-2xl font-extrabold mb-6 text-center text-gray-900">
-          Login to Your Account
+          Create a New Account
         </h2>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
@@ -60,24 +67,28 @@ export default function Login({ onLogin }) {
             />
           </div>
 
+          <div>
+            <label htmlFor="confirmPassword" className="block text-gray-900 mb-1 font-bold">
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              id="confirmPassword"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-green-600"
+              placeholder="Confirm your password"
+            />
+          </div>
+
           <button
             type="submit"
             className="w-full bg-green-700 text-white py-2 rounded-md hover:bg-green-800 transition font-bold"
           >
-            Login
+            Sign Up
           </button>
         </form>
-        <p className="mt-4 text-center text-gray-900">
-  Don't have an account?{" "}
-  <button
-    onClick={() => navigate("/signup")}
-    className="text-blue-600 underline hover:text-blue-800"
-    type="button"
-  >
-    Sign Up
-  </button>
-</p>
-
       </div>
     </div>
   );
