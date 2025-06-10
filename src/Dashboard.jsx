@@ -558,54 +558,79 @@ const handleLogout = async () => {
 const overviewContent = useMemo(() => {
   return (courses || []).filter(course => !!course.id && !!course.name)
     .map((course) => (
+      <div 
+        key={course.id} 
+        className="mb-6 border border-gray-700 rounded p-4 bg-gray-800 
+                  transition-all duration-300 ease-in-out
+                  hover:border-gray-500 hover:shadow-lg hover:-translate-y-1"
+      >
+        {/* Course Header with Animation */}
+        <div className="flex justify-between items-center mb-3 group">
+          <h3 className="text-2xl font-semibold 
+                        transition-all duration-300
+                        group-hover:text-blue-400">
+            {course.name.toUpperCase()}
+          </h3>
+          <button
+            title="Remove Course"
+            onClick={() => confirmDeleteCourse(course)}
+            className="text-red-600 font-bold text-xl 
+                      hover:text-red-800 hover:scale-125
+                      transition-transform duration-200"
+          >
+            &times;
+          </button>
+        </div>
 
-    <div key={course.id} className="mb-6 border border-gray-700 rounded p-4 bg-gray-800">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-2xl font-semibold">{course.name.toUpperCase()}</h3>
-        <button
-          title="Remove Course"
-          onClick={() => confirmDeleteCourse(course)}
-          className="text-red-600 font-bold text-xl hover:text-red-800"
-        >
-          &times;
-        </button>
-      </div>
+        {/* Folder Items with Animation */}
+        {(folders[course.id] || []).map((folder) => (
+          <div 
+            key={folder} 
+            className="ml-6 mb-4 border border-gray-600 rounded p-3 bg-gray-700
+                      transition-all duration-300 ease-in-out
+                      hover:bg-gray-600 hover:border-gray-400 hover:shadow-md"
+          >
+            <div className="flex justify-between items-center mb-2 group">
+              <h4 className="font-semibold 
+                            transition-all duration-300
+                            group-hover:text-green-400">
+                {folder}
+              </h4>
+              <button
+                title="Remove Folder"
+                onClick={() => confirmDeleteFolder(course, folder)}
+                className="text-red-600 font-bold text-lg 
+                          hover:text-red-800 hover:rotate-90
+                          transition-transform duration-300"
+              >
+                &times;
+              </button>
+            </div>
 
-      {(folders[course.id] || []).length === 0 && (
-        <p className="ml-4 italic">No folders added.</p>
-      )}
-
-      {(folders?.[course.id] || []).map((folder) => (
-        <div key={folder} className="ml-6 mb-4 border border-gray-600 rounded p-3 bg-gray-700">
-          <div className="flex justify-between items-center mb-2">
-            <h4 className="font-semibold">{folder}</h4>
-            <button
-              title="Remove Folder"
-              onClick={() => confirmDeleteFolder(course, folder)}
-              className="text-red-600 font-bold text-lg hover:text-red-800"
-            >
-              &times;
-            </button>
-          </div>
-          <div className="ml-4">
-            {(links[course.id]?.[folder] || []).length === 0 && (
-              <p className="italic text-sm">No links added.</p>
-            )}
-
+            {/* Link Items with Animation */}
             {(links?.[course.id]?.[folder] || []).map((link, idx) => (
-              <div key={idx} className="flex justify-between items-center mb-1">
+              <div 
+                key={idx} 
+                className="flex justify-between items-center mb-1 group
+                          hover:bg-gray-500/30 px-2 py-1 rounded
+                          transition-all duration-200"
+              >
                 <a
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline text-blue-400"
+                  className="underline text-blue-400
+                            transition-all duration-300
+                            hover:text-blue-300 transform hover:scale-110 hover:no-underline"
                 >
                   {link.title}
                 </a>
                 <button
                   title="Remove Link"
                   onClick={() => confirmDeleteLink(course, folder, idx)}
-                  className="text-red-600 font-bold hover:text-red-800"
+                  className="text-red-600 font-bold 
+                            hover:text-red-800 hover:scale-125
+                            transition-transform duration-200"
                 >
                   &times;
                 </button>
@@ -614,15 +639,16 @@ const overviewContent = useMemo(() => {
 
             <button
               onClick={() => handleNewLinkFromOverview(course, folder)}
-              className="text-green-500 underline hover:text-green-700 text-sm mt-2"
+              className="text-green-500 hover:text-green-300 text-sm mt-2
+                        underline hover:no-underline
+                        transition-all duration-300"
             >
               + Add Link
             </button>
           </div>
-        </div>
-      ))}
-    </div>
-  ));
+        ))}
+      </div>
+    ));
 }, [courses, folders, links]);
 
 
@@ -630,7 +656,7 @@ const overviewContent = useMemo(() => {
   return (
     <>
       {/* Container with relative positioning to anchor the Logout button */}
-    <div className="min-h-screen bg-gray-800 flex items-center justify-center p-6 relative">
+    <div className="min-h-screen bg-gray-800 flex items-center justify-center p-4 sm:p-6">
       {/* Logout button for Step 1 */}
       {step === 1 && (
         <button
@@ -650,38 +676,36 @@ const overviewContent = useMemo(() => {
           Logout
         </button>
       )}
-        <div className="max-w-4xl w-full bg-gray-900 rounded-lg p-8 text-white shadow-lg">
+        <div className="w-full max-w-4xl bg-gray-900 rounded-lg p-4 sm:p-8 text-white shadow-lg transition-all duration-300 ease-in-out">
           {/* Step 1: Add Course */}
 {step === 1 && (
   <div className="max-w-md mx-auto text-center">
-    <h1 className="text-4xl font-bold mb-6">Add Course</h1>
+    <h1 className="text-3xl sm:text-4xl font-bold mb-6 text-center sm:text-center transition-all duration-200">
+      Add Course
+    </h1>
+
     <input
       type="text"
       value={newCourse}
       onChange={(e) => setNewCourse(e.target.value)}
       placeholder="Enter course name"
-      className="w-full px-4 py-2 rounded mb-4 text-black"
+      className="w-full px-6 py-4 border rounded mb-6 text-black focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 text-xl" 
     />
 
-    
-    <button
-      onClick={handleAddCourse}
-      className="bg-green-600 px-6 py-2 rounded hover:bg-green-700"
-    >
-      Add Course
-    </button>
-
-  
-
+    <div className="flex gap-4"> {/* Added gap-4 for spacing between buttons */}
       <button
-  onClick={() => setStep(4)}
-  className="mt-4 bg-gray-500 px-6 py-2 rounded hover:bg-gray-400"
->
-  Go to Overview
-</button>
-
-    
-
+        onClick={handleAddCourse}
+        className="flex-1 bg-green-700 hover:bg-green-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
+      >
+        Add Course
+      </button>
+      <button
+        onClick={() => setStep(4)}
+        className="flex-1 bg-gray-700 hover:bg-gray-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
+      >
+        Go to Overview
+      </button>
+    </div>
 
     {/* Show added courses */}
     {courses.length > 0 && (
@@ -691,7 +715,9 @@ const overviewContent = useMemo(() => {
           {courses.map((course) => (
             <li key={course.id}>
               <button
-                className="text-blue-400 underline hover:text-blue-600 mb-2"
+                className="text-blue-400 underline hover:text-blue-600 mb-2 
+            transition-all duration-400 ease-in-out
+            transform hover:scale-110 hover:translate-x-1"
                 onClick={() => {
                   setSelectedCourse(course.id);
                   setStep(2);
@@ -718,7 +744,7 @@ const overviewContent = useMemo(() => {
       value={folderTitle}
       onChange={(e) => setFolderTitle(e.target.value)}
       placeholder="Add New Folder Name"
-      className="w-full px-4 py-2 border rounded mb-4 text-black"
+      className="w-full px-4 py-6 border rounded mb-4 text-black text-xl"
     />
 
     {(folders[selectedCourse] || []).length > 0 && (
@@ -728,7 +754,9 @@ const overviewContent = useMemo(() => {
       {folders[selectedCourse]?.map((folder) => (
         <li key={folder}>
           <button
-            className="text-blue-400 underline hover:text-blue-600 mb-2"
+            className="text-blue-400 underline hover:text-blue-600 mb-2 
+            transition-all duration-300 ease-in-out
+            transform hover:scale-110 hover:translate-x-1"
             onClick={() => {
               setSelectedFolder(folder);
               setStep(3);
@@ -770,13 +798,13 @@ const overviewContent = useMemo(() => {
     <div className="mt-4 flex justify-center gap-4">
       <button
         onClick={handleAddFolder}
-        className="flex-1 bg-green-600 hover:bg-green-700 rounded py-2"
+        className="flex-1 bg-green-700 hover:bg-green-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
       >
         Add Folder
       </button>
       <button
         onClick={() => setStep(4)}
-        className="flex-1 bg-gray-500 hover:bg-gray-400 rounded py-2"
+        className="flex-1 bg-gray-700 hover:bg-gray-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
       >
         Go to Overview
       </button>
@@ -784,7 +812,7 @@ const overviewContent = useMemo(() => {
 
     <button
       onClick={() => setStep(1)}
-      className="mt-6 w-full bg-gray-900 hover:bg-gray-700 rounded py-3"
+      className="mt-6 w-full bg-sky-700 hover:bg-sky-400 text-yellow-100 rounded-lg py-3 transition-colors duration-200 border border-gray-600"
     >
       Back to Courses
     </button>
@@ -797,7 +825,7 @@ const overviewContent = useMemo(() => {
 {step === 3 && (
   <div className="max-w-md mx-auto text-center">
     <h2 className="text-3xl font-semibold mb-4">
-      Add Link to Folder:{selectedCourseObj?.name}
+      Add Link to Folder:
       <span className="underline">
         {selectedCourseObj?.name} / {selectedFolder || "Select folder"}
       </span>
@@ -806,7 +834,7 @@ const overviewContent = useMemo(() => {
     {/* Folder selector if folder not selected */}
     {!selectedFolder && (
       <select
-        className="w-full mb-4 px-4 py-2 rounded text-black"
+        className="w-full mb-8 px-4 py-6 rounded text-black text-xl"
         value={selectedFolder || ""}
         onChange={(e) => setSelectedFolder(e.target.value)}
       >
@@ -826,27 +854,27 @@ const overviewContent = useMemo(() => {
       value={linkTitle}
       onChange={(e) => setLinkTitle(e.target.value)}
       placeholder="Link Title"
-      className="w-full px-4 py-2 border rounded mb-4 text-black"
+      className="w-full px-4 py-6 border rounded mb-4 text-black text-xl"
     />
     <input
       type="url"
       value={linkUrl}
       onChange={(e) => setLinkUrl(e.target.value)}
       placeholder="Link URL"
-      className="w-full px-4 py-2 border rounded mb-4 text-black"
+      className="w-full px-4 py-6 border rounded mb-4 text-black text-xl"
     />
 
     {/* Buttons: Add Link & Go to Overview side by side */}
     <div className="flex justify-center gap-4 mb-4">
       <button
         onClick={handleAddLink}
-        className="flex-1 bg-green-600 hover:bg-green-700 rounded py-2"
+        className="flex-1 bg-green-700 hover:bg-green-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
       >
         Add Link
       </button>
       <button
         onClick={() => setStep(4)}
-        className="flex-1 bg-blue-700 hover:bg-blue-600 rounded py-2"
+        className="flex-1 bg-gray-700 hover:bg-gray-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
       >
         Go to Overview
       </button>
@@ -856,13 +884,13 @@ const overviewContent = useMemo(() => {
     <div className="flex justify-center gap-4">
       <button
         onClick={() => setStep(2)}
-        className="flex-1 bg-gray-900 hover:bg-gray-700 rounded py-2"
+        className="mt-6 w-full bg-sky-700 hover:bg-sky-400 text-yellow-100 rounded-lg py-3 transition-colors duration-200 border border-gray-600"
       >
         Back to Folder
       </button>
       <button
         onClick={() => setStep(1)}
-        className="flex-1 bg-gray-900 hover:bg-gray-700 rounded py-2"
+        className="mt-6 w-full bg-sky-700 hover:bg-sky-400 text-yellow-100 rounded-lg py-3 transition-colors duration-200 border border-gray-600"
       >
         Back to Courses
       </button>
@@ -874,7 +902,7 @@ const overviewContent = useMemo(() => {
           {/* Step 4: Overview */}
           {step === 4 && (
   <div className="max-w-4xl mx-auto">
-    <h2 className="text-3xl font-bold mb-6">Overview</h2>
+    <h2 className="text-3xl font-bold mb-6 text-center">Overview</h2>
 
     {courses.length === 0 && <p>No courses added yet.</p>}
 
@@ -882,7 +910,7 @@ const overviewContent = useMemo(() => {
 
     <button
       onClick={() => setStep(1)}
-      className="w-full bg-gray-900 hover:bg-gray-700 rounded py-3 text-2xl font-bold mt-6"
+      className="w-full bg-black/25 hover:bg-white/50 text-white rounded-lg py-3 text-xl font-bold mt-6 border border-gray-600 transition-colors duration-200"
     >
       Add Course/Folder
     </button>
