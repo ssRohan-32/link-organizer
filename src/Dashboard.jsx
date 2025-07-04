@@ -1,6 +1,6 @@
-import { setDoc, updateDoc, getFirestore, collection, getDocs, getDoc, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { setDoc, updateDoc, collection, getDocs, getDoc, addDoc, deleteDoc, doc } from "firebase/firestore";
 import React, { useState, useEffect, useMemo } from "react";
-import { firebaseApp, auth, db } from "./firebase";
+import { auth, db } from "./firebase";
 import { signOut } from "firebase/auth";
 
 
@@ -25,36 +25,41 @@ export default function CourseManager({ onLogout }) {
   const selectedCourseObj = courses.find(c => c.id === selectedCourse);
 
   const [selectedFolder, setSelectedFolder] = useState(null);
-  const [askToContinue, setAskToContinue] = useState(false);
+  const [setAskToContinue] = useState(false);
   
+
+  // Deleting course
   const confirmDeleteCourse = (course) => {
   setShowConfirm(true);
   setConfirmType("course");
-  setConfirmTarget(course); // pass full course object
+  setConfirmTarget(course); 
 };
 
+// Deleting folder
 const confirmDeleteFolder = (course, folder) => {
   setShowConfirm(true);
   setConfirmType("folder");
-  setConfirmTarget({ course, folder }); // course is full object
+  setConfirmTarget({ course, folder }); 
 };
 
+// Deleting link
 const confirmDeleteLink = (course, folder, index) => {
   setShowConfirm(true);
   setConfirmType("link");
-  setConfirmTarget({ course, folder, index }); // course is full object
+  setConfirmTarget({ course, folder, index }); 
 };
 
 
-
+// Adding link from overview
 const handleNewLinkFromOverview = (course, folder) => {
   setSelectedCourse(course.id);
   setSelectedFolder(folder);
   setStep(3); // Go to Add Link step
   setAskToContinue(false);
-};
+};                            
 
 
+// Accessing courses/folders from previous step
   useEffect(() => {
   const fetchUserCourses = async () => {
     const user = auth.currentUser;
@@ -65,7 +70,7 @@ const handleNewLinkFromOverview = (course, folder) => {
     const coursesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     setCourses(coursesData);
 
-    // Initialize folders and links from coursesData if you want
+  
     const foldersData = {};
     const linksData = {};
     coursesData.forEach(course => {
@@ -82,7 +87,7 @@ const handleNewLinkFromOverview = (course, folder) => {
 
   // Confirmation popup state
   const [showConfirm, setShowConfirm] = useState(false);
-  const [confirmType, setConfirmType] = useState(null); // "course", "folder", or "link"
+  const [confirmType, setConfirmType] = useState(null); // course, folder or link
   const [confirmTarget, setConfirmTarget] = useState(null); // Data identifying what to delete
 
   // Undo data
@@ -99,19 +104,20 @@ const handleNewLinkFromOverview = (course, folder) => {
 
 
 
-  // ADD COURSE
+
+  // Add course
  const handleAddCourse = async () => {
   const trimmed = newCourse.trim();
   if (!trimmed) return alert("Course name cannot be empty");
 
   const tempId = `temp-${Date.now()}`;
 
-  // ✅ Check in local state
+  // Check in local state
   if (courses.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
     return alert("Course already exists locally. Try a different name or wait.");
   }
 
-  // Optimistically update UI
+  // Update UI Optimistically using tempID
   const newCourseObj = {
     id: tempId,
     name: trimmed,
@@ -125,13 +131,14 @@ const handleNewLinkFromOverview = (course, folder) => {
   setSelectedCourse(tempId);
   setStep(2);
 
+
   try {
     const user = auth.currentUser;
     if (!user) throw new Error("Not logged in");
 
     const coursesRef = collection(db, "users", user.uid, "courses");
 
-    // 🔍 Check Firestore for duplicate
+    // Checking Firestore for duplicate
     const snapshot = await getDocs(coursesRef);
     const exists = snapshot.docs.find(
       (doc) => doc.data().name.toLowerCase() === trimmed.toLowerCase()
@@ -139,7 +146,7 @@ const handleNewLinkFromOverview = (course, folder) => {
     if (exists) {
       alert("Course already exists in the database.");
 
-      // 🔁 Rollback UI
+      // Rollback UI
       setCourses(prev => prev.filter(c => c.id !== tempId));
       setFolders(prev => {
         const updated = { ...prev };
@@ -154,14 +161,14 @@ const handleNewLinkFromOverview = (course, folder) => {
       return;
     }
 
-    // ✅ Add to Firestore
+    // If not exist, add to Firestore
     const docRef = await addDoc(coursesRef, {
       name: trimmed,
       folders: [],
       links: {},
     });
 
-    // 🔁 Replace temp ID with real ID in all places
+    // Replace temp ID with real ID in all places
     setCourses(prev => prev.map(c =>
       c.id === tempId ? { ...c, id: docRef.id } : c
     ));
@@ -182,7 +189,7 @@ const handleNewLinkFromOverview = (course, folder) => {
   } catch (error) {
     alert("Failed to add course: " + error.message);
 
-    // ❌ Rollback UI if Firestore fails
+    // Rollback UI if error
     setCourses(prev => prev.filter(c => c.id !== tempId));
     setFolders(prev => {
       const updated = { ...prev };
@@ -201,7 +208,7 @@ const handleNewLinkFromOverview = (course, folder) => {
 
 
 
-  // ADD FOLDER
+  // Add folder
   const handleAddFolder = async () => {
   const trimmed = folderTitle.trim();
   if (!trimmed) return alert("Folder name cannot be empty");
@@ -214,7 +221,7 @@ const handleNewLinkFromOverview = (course, folder) => {
   const user = auth.currentUser;
   if (!user) return alert("Not logged in");
 
-  // Optimistically update local state first
+  // Updating local state optimistically
   const updatedFolders = [...currentFolders, trimmed];
   const updatedLinks = {
     ...(links[selectedCourse] || {}),
@@ -243,9 +250,9 @@ const handleNewLinkFromOverview = (course, folder) => {
   } catch (error) {
     console.error("Failed to sync folder with Firestore:", error);
     alert("Failed to save folder to Firestore. Refresh or try again.");
-    // Revert UI state on failure (optional)
   }
 };
+
 
 
 
@@ -273,7 +280,7 @@ const handleNewLinkFromOverview = (course, folder) => {
   const newLink = { title: titleTrimmed, url: urlTrimmed };
   const updatedFolderLinks = [...currentLinks, newLink];
 
-  // Optimistic UI update
+  // Updating UI optimistically
   setLinks((prev) => ({
     ...prev,
     [selectedCourse]: {
@@ -296,10 +303,10 @@ const handleNewLinkFromOverview = (course, folder) => {
     });
   } catch (error) {
     console.error("Failed to sync link to Firestore:", error);
-    alert("Failed to save link to Firestore.");
-    // (Optional) Roll back optimistic UI update here if needed
+    alert("Failed to save link to Firestore.");    
   }
 };
+
 
 
 
@@ -309,7 +316,7 @@ const handleNewLinkFromOverview = (course, folder) => {
   const user = auth.currentUser;
   if (!user || !confirmType || !confirmTarget) return;
 
-  // Immediately close the confirmation modal for responsiveness
+  // Immediately close the confirmation for responsiveness
   setShowConfirm(false);
   setConfirmType(null);
   setConfirmTarget(null);
@@ -334,7 +341,7 @@ undoTimeoutRef.current = setTimeout(() => {
 }, 10000); // 10 seconds
 
 
-      // ✅ Immediately update UI
+      // Update UI asap
       setCourses((prev) => prev.filter((c) => c.id !== course.id));
       setFolders((prev) => {
         const copy = { ...prev };
@@ -347,7 +354,7 @@ undoTimeoutRef.current = setTimeout(() => {
         return copy;
       });
 
-      // 🔧 Firestore delete in background
+      // Firestore delete in background
       deleteDoc(doc(db, "users", user.uid, "courses", course.id))
         .catch((err) => {
           console.error("Failed to delete course in Firestore:", err);
@@ -380,7 +387,7 @@ undoTimeoutRef.current = setTimeout(() => {
       const updatedLinks = { ...(links[course.id] || {}) };
       delete updatedLinks[folder];
 
-      // ✅ Immediately update UI
+      // Update UI asap
       setFolders((prev) => ({
         ...prev,
         [course.id]: updatedFolders,
@@ -390,7 +397,7 @@ undoTimeoutRef.current = setTimeout(() => {
         [course.id]: updatedLinks,
       }));
 
-      // 🔧 Firestore update in background
+      // Firestore update in background
       updateDoc(docRef, {
         folders: updatedFolders,
         links: updatedLinks,
@@ -424,7 +431,7 @@ undoTimeoutRef.current = setTimeout(() => {
 }, 10000); // 10 seconds
 
 
-      // ✅ Immediately update UI
+      // Update UI asap
       setLinks((prev) => ({
         ...prev,
         [course.id]: {
@@ -435,7 +442,7 @@ undoTimeoutRef.current = setTimeout(() => {
 
       const docRef = doc(db, "users", user.uid, "courses", course.id);
 
-      // 🔧 Firestore update in background
+      // Firestore update in background
       updateDoc(docRef, {
         [`links.${folder}`]: updatedFolderLinks,
       }).catch((err) => {
@@ -448,6 +455,7 @@ undoTimeoutRef.current = setTimeout(() => {
     alert("Something went wrong during deletion.");
   }
 };
+
 
 
 
@@ -542,12 +550,12 @@ undoTimeoutRef.current = setTimeout(() => {
 
 
 
-//Logout
 
+//Logout
 const handleLogout = async () => {
     try {
       await signOut(auth);  // Log out from Firebase
-      if (onLogout) onLogout();  // Update app state (e.g., set isLoggedIn false)
+      if (onLogout) onLogout();  // Update state 
     } catch (error) {
       alert("Logout failed: " + error.message);
     }
@@ -564,7 +572,7 @@ const overviewContent = useMemo(() => {
                   transition-all duration-300 ease-in-out
                   hover:border-gray-500 hover:shadow-lg hover:-translate-y-1"
       >
-        {/* Course Header with Animation */}
+        {/* Course header with animation */}
         <div className="flex justify-between items-center mb-3 group">
           <h3 className="text-2xl font-semibold 
                         transition-all duration-300
@@ -582,7 +590,7 @@ const overviewContent = useMemo(() => {
           </button>
         </div>
 
-        {/* Folder Items with Animation */}
+        {/* Folder items with animation */}
         {(folders[course.id] || []).map((folder) => (
           <div 
             key={folder} 
@@ -607,7 +615,7 @@ const overviewContent = useMemo(() => {
               </button>
             </div>
 
-            {/* Link Items with Animation */}
+            {/* Link items with animation */}
             {(links?.[course.id]?.[folder] || []).map((link, idx) => (
               <div 
                 key={idx} 
@@ -655,7 +663,7 @@ const overviewContent = useMemo(() => {
 
   return (
     <>
-      {/* Container with relative positioning to anchor the Logout button */}
+      {/* Logout button */}
     <div className="min-h-screen bg-gray-800 flex items-center justify-center p-4 sm:p-6">
       {/* Logout button for Step 1 */}
       {step === 1 && (
@@ -667,7 +675,7 @@ const overviewContent = useMemo(() => {
         </button>
       )}
 
-      {/* Logout button for Step 4 (Overview) */}
+      {/* Logout button for Step 4 */}
       {step === 4 && (
         <button
           onClick={handleLogout}
@@ -677,6 +685,8 @@ const overviewContent = useMemo(() => {
         </button>
       )}
         <div className="w-full max-w-4xl bg-gray-900 rounded-lg p-4 sm:p-8 text-white shadow-lg transition-all duration-300 ease-in-out">
+          
+          
           {/* Step 1: Add Course */}
 {step === 1 && (
   <div className="max-w-md mx-auto text-center">
@@ -692,7 +702,7 @@ const overviewContent = useMemo(() => {
       className="w-full px-6 py-4 border rounded mb-6 text-black focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 text-xl" 
     />
 
-    <div className="flex gap-4"> {/* Added gap-4 for spacing between buttons */}
+    <div className="flex gap-4"> 
       <button
         onClick={handleAddCourse}
         className="flex-1 bg-green-700 hover:bg-green-400 text-yellow-100 px-6 py-3 rounded-lg transition-colors duration-200 border border-gray-600"
@@ -732,6 +742,8 @@ const overviewContent = useMemo(() => {
     )}
   </div>
 )}
+
+
 
 {/* Step 2: Add Folder */}
 {step === 2 && (
@@ -821,6 +833,7 @@ const overviewContent = useMemo(() => {
 
 
 
+
           {/* Step 3: Add Link */}
 {step === 3 && (
   <div className="max-w-md mx-auto text-center">
@@ -899,6 +912,7 @@ const overviewContent = useMemo(() => {
 )}
 
 
+
           {/* Step 4: Overview */}
           {step === 4 && (
   <div className="max-w-4xl mx-auto">
@@ -916,6 +930,7 @@ const overviewContent = useMemo(() => {
     </button>
   </div>
 )}
+
 
 
           {/* Confirmation popup */}
@@ -964,6 +979,7 @@ const overviewContent = useMemo(() => {
             </div>
           )}
       
+  
   
 
           {/* Undo notification */}
