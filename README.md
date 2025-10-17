@@ -19,7 +19,7 @@ A modern and minimal web app that helps users organize, categorize, and access a
 🖼️ Demo
 
 Check out the live version:
-👉 link-organizer-alpha.vercel.app
+👉 [link-organizer-alpha.vercel.app](https://link-organizer-alpha.vercel.app)
 
 🛠️ Built With
 
