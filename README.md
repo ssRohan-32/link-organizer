@@ -31,18 +31,6 @@ JavaScript — For interactivity and logic
 
 Vercel — For hosting and deployment
 
-📂 Project Structure
-link-organizer/
-├── src/
-│   ├── components/    # UI Components
-│   ├── pages/         # Page layouts
-│   ├── utils/         # Helper functions
-│   ├── App.jsx
-│   └── index.js
-├── public/
-│   └── index.html
-└── package.json
-
 💡 Usage
 
 Add new links with title, URL, and optional tags.
